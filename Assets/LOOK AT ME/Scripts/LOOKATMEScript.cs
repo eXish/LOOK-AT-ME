@@ -25,9 +25,76 @@ public class LOOKATMEScript : MonoBehaviour
     private Vector3 LAMPos;
     private Vector3 LAMSca;
     private Quaternion LAMRot;
-    private int privateID = 0;
+    private string curSN;
+    private Selector selector = new Selector();
 
-    public LOOKATMEServiceScript LAMService;
+    private static readonly string[] ignoredModules = new string[]
+    {
+        "GSEight",
+        "idExchange",
+        "forgetMorseNot",
+        "soulsong",
+        "forgetOurVoices",
+        "TwisterModule",
+        "ConcentrationModule",
+        "duckKonundrum",
+        "BoardWalk",
+        "tetrahedron",
+        "qkCubeSynchronization",
+        "soulscream",
+        "plus",
+        "forgetMazeNot",
+        "blackArrowsModule",
+        "FloorLights",
+        "ShoddyChessModule",
+        "SecurityCouncil",
+        "KeypadDirectionality",
+        "ForgetAnyColor",
+        "whiteout",
+        "busyBeaver",
+        "ANDmodule",
+        "kugelblitz",
+        "omegaForget",
+        "iconic",
+        "TheTwinModule",
+        "RPSJudging",
+        "forgetInfinity",
+        "ForgetTheColors",
+        "brainf",
+        "simonForgets",
+        "14",
+        "forgetItNot",
+        "ubermodule",
+        "forgetMeLater",
+        "qkForgetPerspective",
+        "organizationModule",
+        "forgetUsNot",
+        "forgetEnigma",
+        "tallorderedKeys",
+        "forgetThemAll",
+        "PurgatoryModule",
+        "forgetThis",
+        "simonsStages",
+        "HexiEvilFMN",
+        "SouvenirModule",
+        "MemoryV2",
+        "LOOKATME"
+    };
+
+    private class Modules
+    {
+        public string ModuleName;
+        public KMSelectable ModuleSelectable;
+        public Vector3 ModuleLocalPosition;
+        public Quaternion ModuleLocalRotation;
+        public Vector3 ModuleLocalScale;
+        public bool Selected;
+        public bool IsSelected;
+    }
+
+    private List<Modules> modules = new List<Modules>();
+
+    private static readonly Dictionary<string, List<Modules>> infos = new Dictionary<string, List<Modules>>();
 
     void Start()
     {
@@ -42,32 +109,41 @@ public class LOOKATMEScript : MonoBehaviour
 
         Button.transform.parent.gameObject.SetActive(false);
 
-        LAMService = FindObjectOfType<LOOKATMEServiceScript>();
+        curSN = Bomb.GetSerialNumber();
 
-        while (!LAMService.LAMAdder(privateID))
-            privateID++;
-
-        Log("{0}", privateID);
-
-        if (privateID == 0)
+        if (!infos.ContainsKey(curSN))
         {
-            LAMService.ListenerAdder(FindObjectsOfType<KMBombModule>());
-            Log("{0} - Initalized Modules", privateID);
+            foreach (var module in FindObjectsOfType<KMBombModule>())
+            {
+                if (ignoredModules.Contains(module.ModuleType) || module.GetComponent<KMSelectable>() == null)
+                    continue;
+                infos[curSN].Add(new Modules()
+                {
+                    ModuleName = module.ModuleDisplayName,
+                    ModuleSelectable = module.GetComponent<KMSelectable>(),
+                    ModuleLocalPosition = module.transform.localPosition,
+                    ModuleLocalRotation = module.transform.localRotation,
+                    ModuleLocalScale = module.transform.localScale,
+                    Selected = false,
+                    IsSelected = false
+                });
+            }
+            infos[curSN].Select(m => m.ModuleSelectable.GetComponent<KMSelectable>().OnInteract += SelectListener(m));
         }
-        StartCoroutine(ServiceListener());
+        StartCoroutine(ModuleChecker());
     }
 
-    private IEnumerator ServiceListener()
+    private KMSelectable.OnInteractHandler SelectListener(Modules module)
     {
-        while (!moduleSolved)
+        return delegate
         {
-            if (LAMService.LAMModules.Where(x => x.ID == privateID).FirstOrDefault().IsSelected)
-            {
-                yield return StartCoroutine(LookAtMe(LAMService.LAMModules.Where(x => x.ID == privateID).FirstOrDefault().SelectedModule));
-                LAMService.LAMModules.Where(x => x.ID == privateID).FirstOrDefault().IsSelected = false;
-            }
-            yield return new WaitForSeconds(.2f);
-        }
+            if (module.Selected)
+                return true;
+
+            module.Selected = true;
+
+            return true;
+        };
     }
 
     private Action LAMDeselected()
@@ -91,9 +167,9 @@ public class LOOKATMEScript : MonoBehaviour
                 return false;
 
             buttonPresses++;
-            Log("Pressed the button {0}/{1} time(s)", buttonPresses, LAMService.Modules.Count / 2);
+            Log("Pressed the button {0}/{1} time(s)", buttonPresses, infos[Bomb.GetSerialNumber()].Count / 2);
 
-            if (buttonPresses == LAMService.Modules.Count / 2)
+            if (buttonPresses == infos[Bomb.GetSerialNumber()].Count / 2)
             {
                 Log("Module Solved");
                 Module.HandlePass();
@@ -109,21 +185,46 @@ public class LOOKATMEScript : MonoBehaviour
         };
     }
 
-    private IEnumerator LookAtMe(ModulesScript.Modules module)
+    private IEnumerator ModuleChecker()
+    {
+        var modulesToRemove = new List<Modules>();
+        while (!moduleSolved)
+        {
+            infos[curSN].Where(x => x.Selected && !x.IsSelected).Select(x =>
+            {
+                if (UnityEngine.Random.Range(0, 2) == 0)
+                {
+                    x.IsSelected = true;
+                    StartCoroutine(LookAtMe(x));
+                }
+                return x;
+            });
+
+            //Only one
+            modulesToRemove.AddRange(infos[curSN].Where(x => x.ModuleSelectable.GetComponent(ReflectionHelper.FindType("BombComponent")).GetValue<bool>("IsSolved")).ToList());
+            infos[curSN].RemoveAll(x => modulesToRemove.Contains(x));
+            modulesToRemove.Clear();
+            //
+            yield return new WaitForSeconds(.2f);
+        }
+    }
+
+    private IEnumerator LookAtMe(Modules module)
     {
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.CorrectChime, transform);
         Log("LOOK AT ME! I'M THE MODULE NOW! IGNORE {0}", module.ModuleName.ToUpperInvariant());
         yield return StartCoroutine(LAMMover(module, true));
-        LAMService.Select(transform.GetComponent<KMSelectable>());
+        selector.Select(transform.GetComponent<KMSelectable>());
         StartCoroutine(ButtonMover(true));
         strikeChecker = true;
         yield return new WaitUntil(() => buttonPressed);
         buttonPressed = false;
         module.Selected = false;
         yield return StartCoroutine(LAMMover(module, false));
+        module.IsSelected = false;
     }
 
-    private IEnumerator LAMMover(ModulesScript.Modules module, bool LAM)
+    private IEnumerator LAMMover(Modules module, bool LAM)
     {
         var elapsed = 0f;
         var duration = .25f;
@@ -187,5 +288,21 @@ public class LOOKATMEScript : MonoBehaviour
     void Log(string msg, params object[] fmtArgs)
     {
         Debug.LogFormat(@"[LOOK AT ME #{0}] {1}", moduleId, string.Format(msg, fmtArgs));
+    }
+
+    private class Selector
+    {
+        private static Type selectableType = ReflectionHelper.FindType("Selectable");
+        private static Type inputManagerType = ReflectionHelper.FindType("KTInputManager");
+
+        public void Select(KMSelectable kmSelectable)
+        {
+            var selectable = kmSelectable.GetComponent(selectableType);
+            selectable.CallMethod("HandleSelect", true);
+            var selectableManager = inputManagerType.GetValue<object>("Instance").GetValue<object>("SelectableManager");
+            selectableManager.CallMethod("Select", selectable, true);
+            selectableManager.CallMethod("HandleInteract");
+            selectable.CallMethod("OnInteractEnded");
+        }
     }
 }
