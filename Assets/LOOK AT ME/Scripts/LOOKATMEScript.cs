@@ -10,7 +10,6 @@ using UnityEngine;
 
 public class LOOKATMEScript : MonoBehaviour
 {
-
     public KMBombInfo Bomb;
     public KMBombModule Module;
     public KMAudio Audio;
@@ -93,6 +92,7 @@ public class LOOKATMEScript : MonoBehaviour
     }
 
     private List<Modules> modules = new List<Modules>();
+    private bool _responsibleForSolves;
 
     private static readonly Dictionary<string, List<Modules>> infos = new Dictionary<string, List<Modules>>();
 
@@ -113,6 +113,8 @@ public class LOOKATMEScript : MonoBehaviour
 
         if (!infos.ContainsKey(curSN))
         {
+            _responsibleForSolves = true;
+            infos[curSN] = new List<Modules>();
             foreach (var module in FindObjectsOfType<KMBombModule>())
             {
                 if (ignoredModules.Contains(module.ModuleType) || module.GetComponent<KMSelectable>() == null)
@@ -128,7 +130,8 @@ public class LOOKATMEScript : MonoBehaviour
                     IsSelected = false
                 });
             }
-            infos[curSN].Select(m => m.ModuleSelectable.GetComponent<KMSelectable>().OnInteract += SelectListener(m));
+            foreach (var m in infos[curSN])
+                m.ModuleSelectable.GetComponent<KMSelectable>().OnInteract += SelectListener(m);
         }
         StartCoroutine(ModuleChecker());
     }
@@ -137,11 +140,7 @@ public class LOOKATMEScript : MonoBehaviour
     {
         return delegate
         {
-            if (module.Selected)
-                return true;
-
             module.Selected = true;
-
             return true;
         };
     }
@@ -187,24 +186,22 @@ public class LOOKATMEScript : MonoBehaviour
 
     private IEnumerator ModuleChecker()
     {
-        var modulesToRemove = new List<Modules>();
         while (!moduleSolved)
         {
-            infos[curSN].Where(x => x.Selected && !x.IsSelected).Select(x =>
-            {
-                if (UnityEngine.Random.Range(0, 2) == 0)
+            foreach (var module in infos[curSN])
+                if (module.Selected && !module.IsSelected)
                 {
-                    x.IsSelected = true;
-                    StartCoroutine(LookAtMe(x));
+                    if (UnityEngine.Random.Range(0, 2) == 0)
+                    {
+                        module.IsSelected = true;
+                        yield return StartCoroutine(LookAtMe(module));
+                    }
+                    else
+                        module.Selected = false;
                 }
-                return x;
-            });
 
-            //Only one
-            modulesToRemove.AddRange(infos[curSN].Where(x => x.ModuleSelectable.GetComponent(ReflectionHelper.FindType("BombComponent")).GetValue<bool>("IsSolved")).ToList());
-            infos[curSN].RemoveAll(x => modulesToRemove.Contains(x));
-            modulesToRemove.Clear();
-            //
+            if (_responsibleForSolves)
+                infos[curSN].RemoveAll(x => x.ModuleSelectable.GetComponent(ReflectionHelper.FindType("BombComponent")).GetValue<bool>("IsSolved"));
             yield return new WaitForSeconds(.2f);
         }
     }
