@@ -1,10 +1,7 @@
 ﻿using System;
-using System.CodeDom;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using System.Text.RegularExpressions;
 using KModkit;
 using UnityEngine;
 
@@ -21,6 +18,8 @@ public class LOOKATMEScript : MonoBehaviour
     private bool moduleSolved = false;
     private bool strikeChecker = false;
     private bool buttonPressed = false;
+    private bool onlyOneStrikeGoshDangit = true;
+    private bool responsibleForSolves;
     private Vector3 LAMPos;
     private Vector3 LAMSca;
     private Quaternion LAMRot;
@@ -91,9 +90,6 @@ public class LOOKATMEScript : MonoBehaviour
         public bool IsSelected;
     }
 
-    private List<Modules> modules = new List<Modules>();
-    private bool _responsibleForSolves;
-
     private static readonly Dictionary<string, List<Modules>> infos = new Dictionary<string, List<Modules>>();
 
     void Start()
@@ -105,6 +101,7 @@ public class LOOKATMEScript : MonoBehaviour
         LAMSca = transform.localScale;
 
         transform.GetComponent<KMSelectable>().OnDefocus += LAMDeselected();
+
         Button.OnInteract += ButtonPressed();
 
         Button.transform.parent.gameObject.SetActive(false);
@@ -113,7 +110,7 @@ public class LOOKATMEScript : MonoBehaviour
 
         if (!infos.ContainsKey(curSN))
         {
-            _responsibleForSolves = true;
+            responsibleForSolves = true;
             infos[curSN] = new List<Modules>();
             foreach (var module in FindObjectsOfType<KMBombModule>())
             {
@@ -131,17 +128,18 @@ public class LOOKATMEScript : MonoBehaviour
                 });
             }
             foreach (var m in infos[curSN])
-                m.ModuleSelectable.GetComponent<KMSelectable>().OnInteract += SelectListener(m);
+                m.ModuleSelectable.GetComponent<KMSelectable>().OnFocus += SelectListener(m);
         }
         StartCoroutine(ModuleChecker());
     }
 
-    private KMSelectable.OnInteractHandler SelectListener(Modules module)
+    private Action SelectListener(Modules module)
     {
         return delegate
         {
             module.Selected = true;
-            return true;
+            DebugLog("Module {0} got selected", module.ModuleName);
+            return;
         };
     }
 
@@ -151,8 +149,14 @@ public class LOOKATMEScript : MonoBehaviour
         {
             if (strikeChecker)
             {
-                Log("NOOO! LOOK AT MEE!!!");
-                Module.HandleStrike();
+                DebugLog("StrikeChecker active");
+                if (onlyOneStrikeGoshDangit)
+                {
+                    Log("NOOO! LOOK AT MEE!!!");
+                    Module.HandleStrike();
+                }
+                onlyOneStrikeGoshDangit = !onlyOneStrikeGoshDangit;
+                DebugLog("onlyOneStrikeGoshDangit is now {0}", onlyOneStrikeGoshDangit);
             }
             return;
         };
@@ -162,8 +166,17 @@ public class LOOKATMEScript : MonoBehaviour
     {
         return delegate
         {
+            DebugLog("The button was pressed");
             if (moduleSolved)
                 return false;
+
+            if (infos[curSN].Count == 0)
+            {
+                Log("Module Solved");
+                Module.HandlePass();
+                moduleSolved = true;
+                return false;
+            }
 
             buttonPresses++;
             Log("Pressed the button {0}/{1} time(s)", buttonPresses, infos[Bomb.GetSerialNumber()].Count / 2);
@@ -188,11 +201,19 @@ public class LOOKATMEScript : MonoBehaviour
     {
         while (!moduleSolved)
         {
+            if (infos[curSN].Count == 0)
+            {
+                Log("YEES! LOOK ONLY AT MEE!!!");
+                StartCoroutine(ButtonMover(true));
+                break;
+            }
+            var random = UnityEngine.Random.Range(0, 2);
             foreach (var module in infos[curSN])
                 if (module.Selected && !module.IsSelected)
                 {
-                    if (UnityEngine.Random.Range(0, 2) == 0)
+                    if (random == 0)
                     {
+                        DebugLog("Event triggered, selected module is {0}", module.ModuleName);
                         module.IsSelected = true;
                         yield return StartCoroutine(LookAtMe(module));
                     }
@@ -200,24 +221,39 @@ public class LOOKATMEScript : MonoBehaviour
                         module.Selected = false;
                 }
 
-            if (_responsibleForSolves)
+            if (responsibleForSolves)
                 infos[curSN].RemoveAll(x => x.ModuleSelectable.GetComponent(ReflectionHelper.FindType("BombComponent")).GetValue<bool>("IsSolved"));
+            yield return new WaitForSeconds(.2f);
+        }
+
+        while (responsibleForSolves)
+        {
+            infos[curSN].RemoveAll(x => x.ModuleSelectable.GetComponent(ReflectionHelper.FindType("BombComponent")).GetValue<bool>("IsSolved"));
             yield return new WaitForSeconds(.2f);
         }
     }
 
     private IEnumerator LookAtMe(Modules module)
     {
+        DebugLog("LMA started on {0}", module.ModuleName);
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.CorrectChime, transform);
         Log("LOOK AT ME! I'M THE MODULE NOW! IGNORE {0}", module.ModuleName.ToUpperInvariant());
+        DebugLog("Starting moving coroutine on {0}", module.ModuleName);
         yield return StartCoroutine(LAMMover(module, true));
+        DebugLog("Moving coroutine finished on {0}", module.ModuleName);
+        DebugLog("Selecting myself");
         selector.Select(transform.GetComponent<KMSelectable>());
+        DebugLog("Selected myself");
         StartCoroutine(ButtonMover(true));
+        DebugLog("Moved the button");
         strikeChecker = true;
-        yield return new WaitUntil(() => buttonPressed);
         buttonPressed = false;
-        module.Selected = false;
+        yield return new WaitUntil(() => buttonPressed);
+        DebugLog("Button was pressed");
         yield return StartCoroutine(LAMMover(module, false));
+        DebugLog("Moved back to original position");
+        selector.Select(module.ModuleSelectable);
+        module.Selected = false;
         module.IsSelected = false;
     }
 
@@ -287,6 +323,11 @@ public class LOOKATMEScript : MonoBehaviour
         Debug.LogFormat(@"[LOOK AT ME #{0}] {1}", moduleId, string.Format(msg, fmtArgs));
     }
 
+    void DebugLog(string msg, params object[] fmtArgs)
+    {
+        Debug.LogFormat(@"<LOOK AT ME #{0}> {1}", moduleId, string.Format(msg, fmtArgs));
+    }
+
     private class Selector
     {
         private static Type selectableType = ReflectionHelper.FindType("Selectable");
@@ -294,12 +335,19 @@ public class LOOKATMEScript : MonoBehaviour
 
         public void Select(KMSelectable kmSelectable)
         {
+            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: Begin Selecting");
             var selectable = kmSelectable.GetComponent(selectableType);
+            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: selectable is: {0}", selectable);
             selectable.CallMethod("HandleSelect", true);
+            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: HandleSelect got called on selectable");
             var selectableManager = inputManagerType.GetValue<object>("Instance").GetValue<object>("SelectableManager");
+            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: selectableManager is {0}", selectableManager);
             selectableManager.CallMethod("Select", selectable, true);
+            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: Select got called on selectableManager with value selectable");
             selectableManager.CallMethod("HandleInteract");
+            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: HandleInteract got called on selectableManager");
             selectable.CallMethod("OnInteractEnded");
+            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: OnInteractEnded got called on selectable");
         }
     }
 }

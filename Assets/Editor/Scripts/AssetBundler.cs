@@ -639,15 +639,6 @@ public class AssetBundler
                             continue;
                         }
                         materialInfo.ShaderNames.Add(material.shader.name);
-
-                        if(material.shader.name == "Standard")
-                        {
-                            Debug.LogWarning(string.Format("Use of Standard shader in object {0}. Standard shader should be avoided as it will cause your mod to break in future versions of the game.", renderer.gameObject));
-                        }
-                        else if(!supportedShaders.Contains(material.shader.name))
-                        {
-                            Debug.LogWarning(string.Format("Use of custom shader {0} in object {1}. Use of custom shaders will break mod compatibility on game update requiring rebuild. Recommend using only supported shaders.", material.shader.name, renderer.gameObject));
-                        }
                     }
                 }
             }

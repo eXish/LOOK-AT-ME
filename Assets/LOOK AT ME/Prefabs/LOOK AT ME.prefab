@@ -54,6 +54,7 @@ GameObject:
   - component: {fileID: 114723232536093530}
   - component: {fileID: 114554222399779918}
   - component: {fileID: 114687880310135986}
+  - component: {fileID: 114007597344755224}
   m_Layer: 0
   m_Name: LOOK AT ME
   m_TagString: Untagged
@@ -733,6 +734,17 @@ TextMesh:
   m_Color:
     serializedVersion: 2
     rgba: 4294967295
+--- !u!114 &114007597344755224
+MonoBehaviour:
+  m_ObjectHideFlags: 1
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 100100000}
+  m_GameObject: {fileID: 1249389919894732}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 96a2fc4ae3e690a498a0d85a2b5e0b99, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!114 &114035145310296484
 MonoBehaviour:
   m_ObjectHideFlags: 1
