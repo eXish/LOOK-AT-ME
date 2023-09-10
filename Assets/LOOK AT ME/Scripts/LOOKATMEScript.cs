@@ -138,7 +138,6 @@ public class LOOKATMEScript : MonoBehaviour
         return delegate
         {
             module.Selected = true;
-            DebugLog("Module {0} got selected", module.ModuleName);
             return;
         };
     }
@@ -149,14 +148,12 @@ public class LOOKATMEScript : MonoBehaviour
         {
             if (strikeChecker)
             {
-                DebugLog("StrikeChecker active");
                 if (onlyOneStrikeGoshDangit)
                 {
                     Log("NOOO! LOOK AT MEE!!!");
                     Module.HandleStrike();
                 }
                 onlyOneStrikeGoshDangit = !onlyOneStrikeGoshDangit;
-                DebugLog("onlyOneStrikeGoshDangit is now {0}", onlyOneStrikeGoshDangit);
             }
             return;
         };
@@ -166,7 +163,6 @@ public class LOOKATMEScript : MonoBehaviour
     {
         return delegate
         {
-            DebugLog("The button was pressed");
             if (moduleSolved)
                 return false;
 
@@ -213,7 +209,6 @@ public class LOOKATMEScript : MonoBehaviour
                 {
                     if (random == 0)
                     {
-                        DebugLog("Event triggered, selected module is {0}", module.ModuleName);
                         module.IsSelected = true;
                         yield return StartCoroutine(LookAtMe(module));
                     }
@@ -235,24 +230,16 @@ public class LOOKATMEScript : MonoBehaviour
 
     private IEnumerator LookAtMe(Modules module)
     {
-        DebugLog("LMA started on {0}", module.ModuleName);
         Audio.PlayGameSoundAtTransform(KMSoundOverride.SoundEffect.CorrectChime, transform);
         Log("LOOK AT ME! I'M THE MODULE NOW! IGNORE {0}", module.ModuleName.ToUpperInvariant());
-        DebugLog("Starting moving coroutine on {0}", module.ModuleName);
         yield return StartCoroutine(LAMMover(module, true));
-        DebugLog("Moving coroutine finished on {0}", module.ModuleName);
-        DebugLog("Selecting myself");
-        selector.Select(transform.GetComponent<KMSelectable>());
-        DebugLog("Selected myself");
+        selector.Select(transform.GetComponent<KMSelectable>(), module.ModuleSelectable);
         StartCoroutine(ButtonMover(true));
-        DebugLog("Moved the button");
         strikeChecker = true;
         buttonPressed = false;
         yield return new WaitUntil(() => buttonPressed);
-        DebugLog("Button was pressed");
         yield return StartCoroutine(LAMMover(module, false));
-        DebugLog("Moved back to original position");
-        selector.Select(module.ModuleSelectable);
+        selector.Select(module.ModuleSelectable, transform.GetComponent<KMSelectable>());
         module.Selected = false;
         module.IsSelected = false;
     }
@@ -323,31 +310,72 @@ public class LOOKATMEScript : MonoBehaviour
         Debug.LogFormat(@"[LOOK AT ME #{0}] {1}", moduleId, string.Format(msg, fmtArgs));
     }
 
-    void DebugLog(string msg, params object[] fmtArgs)
-    {
-        Debug.LogFormat(@"<LOOK AT ME #{0}> {1}", moduleId, string.Format(msg, fmtArgs));
-    }
-
     private class Selector
     {
         private static Type selectableType = ReflectionHelper.FindType("Selectable");
         private static Type inputManagerType = ReflectionHelper.FindType("KTInputManager");
 
-        public void Select(KMSelectable kmSelectable)
+        private object origFace = null;
+        private int origIndex = -1;
+
+        #pragma warning disable CS0252
+        public void Select(KMSelectable thisSelectable, KMSelectable newSelectable)
         {
-            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: Begin Selecting");
-            var selectable = kmSelectable.GetComponent(selectableType);
-            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: selectable is: {0}", selectable);
-            selectable.CallMethod("HandleSelect", true);
-            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: HandleSelect got called on selectable");
+            var selectable = thisSelectable.GetComponent(selectableType);
+            var selectable2 = newSelectable.GetComponent(selectableType);
             var selectableManager = inputManagerType.GetValue<object>("Instance").GetValue<object>("SelectableManager");
-            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: selectableManager is {0}", selectableManager);
+            if (origFace != null)
+            {
+                var newFace = selectable2.GetValue<object>("Parent");
+                var childSels = origFace.GetValue<object[]>("Children");
+                childSels[origIndex] = selectable2;
+                origIndex = -1;
+                origFace.SetValue("Children", childSels);
+                var childSels2 = newFace.GetValue<object[]>("Children");
+                for (int i = 0; i < childSels2.Length; i++)
+                {
+                    if (childSels2[i] == selectable2)
+                    {
+                        childSels2[i] = selectable;
+                        newFace.SetValue("Children", childSels2);
+                        break;
+                    }
+                }
+                selectable2.SetValue("Parent", origFace);
+                origFace = null;
+            }
+            else
+            {
+                origFace = selectable.GetValue<object>("Parent");
+                var newFace = selectable2.GetValue<object>("Parent");
+                var childSels = origFace.GetValue<object[]>("Children");
+                for (int i = 0; i < childSels.Length; i++)
+                {
+                    if (childSels[i] == selectable)
+                    {
+                        childSels[i] = null;
+                        origFace.SetValue("Children", childSels);
+                        origIndex = i;
+                        break;
+                    }
+                }
+                var childSels2 = newFace.GetValue<object[]>("Children");
+                for (int i = 0; i < childSels2.Length; i++)
+                {
+                    if (childSels2[i] == selectable2)
+                    {
+                        childSels2[i] = selectable;
+                        newFace.SetValue("Children", childSels2);
+                        break;
+                    }
+                }
+                selectable.SetValue("Parent", selectable2.GetValue<object>("Parent"));
+            }
+            selectable.CallMethod("HandleSelect", true);
             selectableManager.CallMethod("Select", selectable, true);
-            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: Select got called on selectableManager with value selectable");
             selectableManager.CallMethod("HandleInteract");
-            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: HandleInteract got called on selectableManager");
             selectable.CallMethod("OnInteractEnded");
-            Debug.LogFormat(@"<LOOK AT ME> REFLECTION: OnInteractEnded got called on selectable");
         }
+        #pragma warning restore CS0252
     }
 }
