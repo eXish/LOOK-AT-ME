@@ -14,6 +14,7 @@ public class LOOKATMEScript : MonoBehaviour
 
     private int moduleId;
     private int buttonPresses = 0;
+    private int expectedPresses = 0;
     private static int moduleIdCounter = 1;
     private bool moduleSolved = false;
     private bool strikeChecker = false;
@@ -130,6 +131,7 @@ public class LOOKATMEScript : MonoBehaviour
             foreach (var m in infos[curSN])
                 m.ModuleSelectable.GetComponent<KMSelectable>().OnFocus += SelectListener(m);
         }
+        expectedPresses = infos[curSN].Count / 2;
         StartCoroutine(ModuleChecker());
     }
 
@@ -175,9 +177,9 @@ public class LOOKATMEScript : MonoBehaviour
             }
 
             buttonPresses++;
-            Log("Pressed the button {0}/{1} time(s)", buttonPresses, infos[Bomb.GetSerialNumber()].Count / 2);
+            Log("Pressed the button {0}/{1} time(s)", buttonPresses, expectedPresses);
 
-            if (buttonPresses == infos[Bomb.GetSerialNumber()].Count / 2)
+            if (buttonPresses == expectedPresses)
             {
                 Log("Module Solved");
                 Module.HandlePass();
