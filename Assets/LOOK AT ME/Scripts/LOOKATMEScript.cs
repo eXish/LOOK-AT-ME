@@ -113,7 +113,7 @@ public class LOOKATMEScript : MonoBehaviour
         {
             responsibleForSolves = true;
             infos[curSN] = new List<Modules>();
-            foreach (var module in FindObjectsOfType<KMBombModule>())
+            foreach (var module in transform.parent.GetComponentsInChildren<KMBombModule>())
             {
                 if (ignoredModules.Contains(module.ModuleType) || module.GetComponent<KMSelectable>() == null)
                     continue;
